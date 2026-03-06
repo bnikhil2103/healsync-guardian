@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Bell, Menu, X, User, AlertTriangle, QrCode } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Bell, Menu, X, User, AlertTriangle, QrCode, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -16,12 +18,34 @@ const navItems = [
 
 const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setProfileOpen(false);
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      alert("Logout failed");
+    }
+  };
 
   return (
     <nav className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-xl">
       <div className="container mx-auto flex items-center justify-between px-4 py-3">
-        {/* Brand */}
         <Link to="/" className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
             <QrCode className="h-5 w-5 text-primary-foreground" />
@@ -32,7 +56,6 @@ const Navbar = () => {
           </div>
         </Link>
 
-        {/* Desktop Nav */}
         <div className="hidden lg:flex items-center gap-1">
           {navItems.map((item) => (
             <Link
@@ -47,6 +70,7 @@ const Navbar = () => {
               {item.label}
             </Link>
           ))}
+
           <Link
             to="/emergency-qr"
             className={`ml-1 flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
@@ -60,28 +84,76 @@ const Navbar = () => {
           </Link>
         </div>
 
-        {/* Right side */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative">
           <Button variant="ghost" size="icon" className="relative hidden md:flex">
             <Bell className="h-5 w-5 text-muted-foreground" />
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-emergency" />
           </Button>
+
           <Link to="/emergency-qr" className="hidden md:flex">
             <Button variant="destructive" size="sm" className="gap-1.5 font-semibold">
               <AlertTriangle className="h-4 w-4" />
               Emergency
             </Button>
           </Link>
-          <Button variant="ghost" size="icon" className="hidden md:flex">
-            <User className="h-5 w-5 text-muted-foreground" />
-          </Button>
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(!mobileOpen)}>
+
+          <div className="relative hidden md:block">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setProfileOpen(!profileOpen)}
+            >
+              <User className="h-5 w-5 text-muted-foreground" />
+            </Button>
+
+            <AnimatePresence>
+              {profileOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="absolute right-0 mt-2 w-80 rounded-2xl border border-border bg-card p-5 shadow-elevated z-50"
+                >
+                  <p className="text-lg font-bold text-foreground">Profile</p>
+                  <p className="mt-2 text-sm break-all text-muted-foreground">
+                    {currentUser?.email || "Logged in user"}
+                  </p>
+
+                  <Link to="/profile" onClick={() => setProfileOpen(false)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 w-full"
+                    >
+                      Manage Profile
+                    </Button>
+                  </Link>
+
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="mt-3 w-full gap-2"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
         </div>
       </div>
 
-      {/* Mobile menu */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
@@ -105,6 +177,7 @@ const Navbar = () => {
                   {item.label}
                 </Link>
               ))}
+
               <Link
                 to="/emergency-qr"
                 onClick={() => setMobileOpen(false)}
@@ -113,6 +186,23 @@ const Navbar = () => {
                 <QrCode className="h-4 w-4" />
                 Emergency QR Card
               </Link>
+
+              <Link
+                to="/profile"
+                onClick={() => setMobileOpen(false)}
+                className="mt-2 flex items-center justify-center gap-2 rounded-lg border py-3 text-sm font-bold"
+              >
+                <User className="h-4 w-4" />
+                Manage Profile
+              </Link>
+
+              <button
+                onClick={handleLogout}
+                className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-red-500 py-3 text-sm font-bold text-white"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
             </div>
           </motion.div>
         )}
