@@ -4,7 +4,8 @@ import { Bell, Menu, X, User, AlertTriangle, QrCode, LogOut } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -20,13 +21,33 @@ const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [fullName, setFullName] = useState("");
 
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+
+      if (user) {
+        try {
+          const docRef = doc(db, "userProfiles", user.uid);
+          const docSnap = await getDoc(docRef);
+
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setFullName(data.fullName || "");
+          } else {
+            setFullName("");
+          }
+        } catch (error) {
+          console.error("Error loading full name:", error);
+          setFullName("");
+        }
+      } else {
+        setFullName("");
+      }
     });
 
     return () => unsubscribe();
@@ -116,7 +137,7 @@ const Navbar = () => {
                 >
                   <p className="text-lg font-bold text-foreground">Profile</p>
                   <p className="mt-2 text-sm break-all text-muted-foreground">
-                    {currentUser?.email || "Logged in user"}
+                    {fullName || "Logged in user"}
                   </p>
 
                   <Link to="/profile" onClick={() => setProfileOpen(false)}>

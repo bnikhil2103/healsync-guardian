@@ -1,94 +1,163 @@
-import { motion } from "framer-motion";
-import { DollarSign, Shield, Heart, BarChart3 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { useEffect, useState } from "react";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { Heart, Bell } from "lucide-react";
 
-const spendingData = [
-  { month: "Jan", amount: 1200 },
-  { month: "Feb", amount: 1800 },
-  { month: "Mar", amount: 2400 },
-  { month: "Apr", amount: 900 },
-];
-
-const riskData = [
-  { name: "Low Risk", value: 55, color: "hsl(152, 55%, 45%)" },
-  { name: "Medium Risk", value: 30, color: "hsl(40, 90%, 50%)" },
-  { name: "High Risk", value: 15, color: "hsl(0, 80%, 55%)" },
-];
-
-const summaryCards = [
-  { icon: DollarSign, label: "Total Healthcare Expenses", value: "₹18,450", color: "primary", emoji: "💰" },
-  { icon: Shield, label: "Insurance Remaining", value: "₹1,20,000", color: "info", emoji: "🛡" },
-  { icon: Heart, label: "Health Risk Score", value: "Low", color: "success", emoji: "❤️" },
-  { icon: BarChart3, label: "Upcoming Medical Costs", value: "₹5,000", color: "warning", emoji: "📊" },
-];
+interface ReminderItem {
+  medicineName: string;
+  dosage: string;
+  time: string;
+  frequency: string;
+  notes: string;
+  linkedReport: string;
+  taken: boolean;
+}
 
 const Dashboard = () => {
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-10">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="mb-2 text-3xl font-extrabold font-display">Health + Finance Dashboard</h1>
-          <p className="mb-8 text-muted-foreground">Your comprehensive health and financial overview at a glance.</p>
-        </motion.div>
+  const [reminders, setReminders] = useState<ReminderItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-        {/* Summary Cards */}
-        <div className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {summaryCards.map((card, i) => (
-            <motion.div
-              key={card.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="rounded-xl border border-border bg-card p-5 shadow-card hover:shadow-elevated transition-shadow"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-2xl">{card.emoji}</span>
-                <div className={`rounded-lg p-2 ${card.color === "primary" ? "bg-primary/10" : card.color === "info" ? "bg-info/10" : card.color === "success" ? "bg-success/10" : "bg-warning/10"}`}>
-                  <card.icon className={`h-5 w-5 ${card.color === "primary" ? "text-primary" : card.color === "info" ? "text-info" : card.color === "success" ? "text-success" : "text-warning"}`} />
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground">{card.label}</p>
-              <p className="text-2xl font-bold font-display">{card.value}</p>
-            </motion.div>
-          ))}
+  useEffect(() => {
+    const fetchReminders = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+
+        const docRef = doc(db, "userProfiles", user.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setReminders(data.medicineReminders || []);
+        }
+      } catch (error) {
+        console.error("Error loading reminders:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReminders();
+  }, []);
+
+  const toggleTaken = async (index: number) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const updatedReminders = [...reminders];
+      updatedReminders[index].taken = !updatedReminders[index].taken;
+
+      setReminders(updatedReminders);
+
+      await setDoc(
+        doc(db, "userProfiles", user.uid),
+        { medicineReminders: updatedReminders },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Error updating reminder:", error);
+      alert("Failed to update reminder");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background px-4 py-8">
+      <div className="mx-auto max-w-6xl space-y-8">
+        <div>
+          <h1 className="text-4xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground mt-2">
+            Your health and medicine tracking overview
+          </p>
         </div>
 
-        {/* Charts */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="rounded-xl border border-border bg-card p-6 shadow-card">
-            <h3 className="mb-4 text-lg font-bold font-display">Monthly Healthcare Spending</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={spendingData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(200, 20%, 90%)" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip formatter={(v: number) => [`₹${v}`, "Spending"]} />
-                <Bar dataKey="amount" fill="hsl(197, 71%, 43%)" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </motion.div>
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="rounded-2xl border bg-card p-6 shadow-lg">
+            <div className="flex items-center gap-3">
+              <Heart className="h-6 w-6 text-red-500" />
+              <h2 className="text-xl font-semibold">Health Status</h2>
+            </div>
+            <p className="mt-4 text-muted-foreground">
+              Monitor your reports, reminders, and emergency information in one place.
+            </p>
+          </div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="rounded-xl border border-border bg-card p-6 shadow-card">
-            <h3 className="mb-4 text-lg font-bold font-display">Health Risk Assessment</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={riskData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                  {riskData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 flex justify-center gap-4 text-xs">
-              {riskData.map((r) => (
-                <div key={r.name} className="flex items-center gap-1.5">
-                  <div className="h-3 w-3 rounded-full" style={{ background: r.color }} />
-                  <span className="text-muted-foreground">{r.name}</span>
+          <div className="rounded-2xl border bg-card p-6 shadow-lg">
+            <div className="flex items-center gap-3">
+              <Bell className="h-6 w-6 text-yellow-500" />
+              <h2 className="text-xl font-semibold">Reminder Summary</h2>
+            </div>
+            <p className="mt-4 text-3xl font-bold">{reminders.length}</p>
+            <p className="text-muted-foreground">Total reminders saved</p>
+          </div>
+
+          <div className="rounded-2xl border bg-card p-6 shadow-lg">
+            <h2 className="text-xl font-semibold">Taken Today</h2>
+            <p className="mt-4 text-3xl font-bold">
+              {reminders.filter((r) => r.taken).length}
+            </p>
+            <p className="text-muted-foreground">Marked as taken</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-card p-6 shadow-lg space-y-4">
+          <h2 className="text-2xl font-bold">Today’s Medicine Reminders</h2>
+
+          {loading ? (
+            <p className="text-muted-foreground">Loading reminders...</p>
+          ) : reminders.length === 0 ? (
+            <p className="text-muted-foreground">No medicine reminders added yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {reminders.map((reminder, index) => (
+                <div
+                  key={index}
+                  className="rounded-xl border p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="space-y-1">
+                    <p className="font-semibold text-lg">{reminder.medicineName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Dosage: {reminder.dosage || "-"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Time: {reminder.time}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Frequency: {reminder.frequency || "-"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Notes: {reminder.notes || "-"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Linked Report: {reminder.linkedReport || "-"}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col items-start gap-2 md:items-end">
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-medium ${
+                        reminder.taken
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {reminder.taken ? "Taken" : "Not Taken"}
+                    </span>
+
+                    <button
+                      onClick={() => toggleTaken(index)}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-white"
+                    >
+                      Mark as {reminder.taken ? "Not Taken" : "Taken"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
-          </motion.div>
+          )}
         </div>
       </div>
     </div>

@@ -1,11 +1,29 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { auth, db, storage } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { motion } from "framer-motion";
-import { QrCode, User, Heart, Phone, Shield, Download, AlertTriangle } from "lucide-react";
+import {
+  QrCode,
+  User,
+  Heart,
+  Phone,
+  Shield,
+  Download,
+  AlertTriangle,
+  FileText,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface HealthData {
   fullName: string;
@@ -22,6 +40,11 @@ interface HealthData {
   contact2Phone: string;
   contact3Name: string;
   contact3Phone: string;
+}
+
+interface UploadedReport {
+  name: string;
+  url: string;
 }
 
 const EmergencyQR = () => {
@@ -46,8 +69,47 @@ const EmergencyQR = () => {
   const [qrImage, setQrImage] = useState("");
   const [profileId, setProfileId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [uploadedReports, setUploadedReports] = useState<UploadedReport[]>([]);
 
   const qrRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchSavedProfile = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const docRef = doc(db, "userProfiles", user.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+
+          setFormData({
+            fullName: data.fullName || "",
+            age: data.age || "",
+            bloodGroup: data.bloodGroup || "",
+            allergies: data.allergies || "",
+            diseases: data.diseases || "",
+            medications: data.medications || "",
+            insurance: data.insurance || "",
+            address: data.address || "",
+            contact1Name: data.contact1Name || "",
+            contact1Phone: data.contact1Phone || "",
+            contact2Name: data.contact2Name || "",
+            contact2Phone: data.contact2Phone || "",
+            contact3Name: data.contact3Name || "",
+            contact3Phone: data.contact3Phone || "",
+          });
+        }
+      } catch (error) {
+        console.error("Error loading saved profile:", error);
+      }
+    };
+
+    fetchSavedProfile();
+  }, []);
 
   const handleChange = (field: keyof HealthData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -62,12 +124,35 @@ const EmergencyQR = () => {
     try {
       setLoading(true);
 
+      let reportLinks: UploadedReport[] = [];
+
+      if (selectedFiles && auth.currentUser) {
+        for (const file of Array.from(selectedFiles)) {
+          const storageRef = ref(
+            storage,
+            `medicalReports/${auth.currentUser.uid}/${Date.now()}-${file.name}`
+          );
+
+          await uploadBytes(storageRef, file);
+          const downloadURL = await getDownloadURL(storageRef);
+
+          reportLinks.push({
+            name: file.name,
+            url: downloadURL,
+          });
+        }
+      }
+
       const response = await fetch("http://localhost:5000/create-profile", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          uid: auth.currentUser?.uid || "",
+          reports: reportLinks,
+        }),
       });
 
       const data = await response.json();
@@ -75,6 +160,7 @@ const EmergencyQR = () => {
       if (data.success) {
         setQrImage(data.qr);
         setProfileId(data.id);
+        setUploadedReports(reportLinks);
         setGenerated(true);
       } else {
         alert(data.message || "Failed to generate QR");
@@ -120,6 +206,10 @@ const EmergencyQR = () => {
           <p className="mx-auto mt-2 max-w-xl text-muted-foreground">
             Fill in your medical details below. When scanned, doctors can instantly access your
             critical health information during emergencies.
+          </p>
+
+          <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+            Your saved profile is loaded automatically if available.
           </p>
         </motion.div>
 
@@ -272,6 +362,39 @@ const EmergencyQR = () => {
                 ))}
               </div>
 
+              <div>
+                <div className="mb-4 flex items-center gap-2 text-primary">
+                  <FileText className="h-5 w-5" />
+                  <h3 className="text-lg font-bold font-display">
+                    Medical Reports / Prescriptions
+                  </h3>
+                </div>
+
+                <Input
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf"
+                  capture="environment"
+                  onChange={(e) => setSelectedFiles(e.target.files)}
+                />
+
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Upload or scan prescriptions / medical reports. They will be visible after OTP
+                  verified emergency access.
+                </p>
+
+                {selectedFiles && selectedFiles.length > 0 && (
+                  <div className="mt-3 rounded-lg bg-muted p-3 text-sm space-y-1">
+                    <p className="font-semibold">Selected Files:</p>
+                    {Array.from(selectedFiles).map((file, index) => (
+                      <p key={index} className="text-muted-foreground">
+                        {file.name}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <Button
                 onClick={handleGenerate}
                 size="lg"
@@ -325,6 +448,17 @@ const EmergencyQR = () => {
                       </p>
                     )}
                   </div>
+
+                  {uploadedReports.length > 0 && (
+                    <div className="rounded-lg bg-muted p-3 text-left text-sm space-y-1">
+                      <p className="font-semibold text-foreground">Uploaded Reports:</p>
+                      {uploadedReports.map((report, index) => (
+                        <p key={index} className="text-muted-foreground break-all">
+                          {report.name}
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   <Button
                     onClick={handleDownload}

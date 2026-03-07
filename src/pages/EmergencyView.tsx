@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { AlertTriangle, Phone, Heart, Shield } from "lucide-react";
+import { AlertTriangle, Phone, Heart, Shield, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+interface UploadedReport {
+  name: string;
+  url: string;
+}
 
 interface BasicProfile {
   id: string;
@@ -23,6 +28,7 @@ interface FullProfile extends BasicProfile {
   contact2Phone: string;
   contact3Name: string;
   contact3Phone: string;
+  reports?: UploadedReport[];
 }
 
 const EmergencyView = () => {
@@ -39,15 +45,20 @@ const EmergencyView = () => {
   useEffect(() => {
     const fetchBasicProfile = async () => {
       try {
+        if (!id) {
+          setLoading(false);
+          return;
+        }
+
         await fetch("http://localhost:5000/scan-log", {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             userId: id,
-            location: "Unknown"
-          })
+            location: "Unknown",
+          }),
         });
 
         const response = await fetch(`http://localhost:5000/profile/${id}`);
@@ -56,11 +67,10 @@ const EmergencyView = () => {
         if (data.success) {
           setBasicData(data);
         } else {
-          alert("Profile not found");
+          console.error("Profile not found");
         }
       } catch (error) {
-        console.error(error);
-        alert("Failed to load emergency profile");
+        console.error("Failed to load emergency profile:", error);
       } finally {
         setLoading(false);
       }
@@ -81,22 +91,22 @@ const EmergencyView = () => {
       const response = await fetch("http://localhost:5000/send-otp", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          phoneNumber: basicData.contact1Phone
-        })
+          phoneNumber: basicData.contact1Phone,
+        }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        alert("OTP sent successfully to emergency contact");
+        alert("OTP sent successfully");
       } else {
         alert(data.message || "Failed to send OTP");
       }
     } catch (error) {
-      console.error(error);
+      console.error("Send OTP error:", error);
       alert("Failed to send OTP");
     } finally {
       setSendingOtp(false);
@@ -120,12 +130,12 @@ const EmergencyView = () => {
       const otpResponse = await fetch("http://localhost:5000/verify-otp", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           phoneNumber: basicData.contact1Phone,
-          otp
-        })
+          otp,
+        }),
       });
 
       const otpData = await otpResponse.json();
@@ -145,7 +155,7 @@ const EmergencyView = () => {
         alert("Invalid OTP");
       }
     } catch (error) {
-      console.error(error);
+      console.error("Verify OTP error:", error);
       alert("OTP verification failed");
     } finally {
       setVerifyingOtp(false);
@@ -153,19 +163,11 @@ const EmergencyView = () => {
   };
 
   if (loading) {
-    return (
-      <div className="p-10 text-center text-lg">
-        Loading emergency profile...
-      </div>
-    );
+    return <div className="p-10 text-center text-lg">Loading emergency profile...</div>;
   }
 
   if (!basicData) {
-    return (
-      <div className="p-10 text-center text-lg">
-        No emergency profile found.
-      </div>
-    );
+    return <div className="p-10 text-center text-lg">No emergency profile found.</div>;
   }
 
   return (
@@ -184,15 +186,15 @@ const EmergencyView = () => {
         </div>
 
         <div className="rounded-xl bg-muted p-4 space-y-2">
-          <p><strong>Name:</strong> {basicData.fullName}</p>
-          <p><strong>Age:</strong> {basicData.age}</p>
-          <p><strong>Blood Group:</strong> {basicData.bloodGroup}</p>
+          <p><strong>Name:</strong> {basicData.fullName || "-"}</p>
+          <p><strong>Age:</strong> {basicData.age || "-"}</p>
+          <p><strong>Blood Group:</strong> {basicData.bloodGroup || "-"}</p>
           <p>
-            <strong>Emergency Contact:</strong> {basicData.contact1Name} - {basicData.contact1Phone}
+            <strong>Emergency Contact:</strong> {basicData.contact1Name || "-"} - {basicData.contact1Phone || "-"}
           </p>
         </div>
 
-        <a href={`tel:${basicData.contact1Phone}`}>
+        <a href={`tel:${basicData.contact1Phone || ""}`}>
           <Button className="w-full">
             <Phone className="mr-2 h-4 w-4" />
             Call Emergency Contact
@@ -255,6 +257,29 @@ const EmergencyView = () => {
               <p><strong>Contact 2:</strong> {fullData.contact2Name || "-"} - {fullData.contact2Phone || "-"}</p>
               <p><strong>Contact 3:</strong> {fullData.contact3Name || "-"} - {fullData.contact3Phone || "-"}</p>
             </div>
+
+            <div className="flex items-center gap-2 text-primary">
+              <FileText className="h-5 w-5" />
+              <h2 className="text-xl font-bold">Medical Reports / Prescriptions</h2>
+            </div>
+
+            {fullData.reports && fullData.reports.length > 0 ? (
+              <div className="rounded-xl bg-muted p-4 space-y-2">
+                {fullData.reports.map((report, index) => (
+                  <a
+                    key={index}
+                    href={report.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-lg border bg-white p-3 text-blue-600 underline break-all"
+                  >
+                    {report.name}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground">No reports uploaded.</p>
+            )}
           </div>
         )}
       </div>
